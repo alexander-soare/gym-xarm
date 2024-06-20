@@ -5,10 +5,10 @@ from gym_xarm.tasks import Base
 
 class Push(Base):
     """Xarm Push environment where the goal is to push the cube to a target location on a table.
-    
+
     The action space is the desired relative target for the end-effector (x (forward), y (left), z (up)). The gripper
     is fixed in place.
-    
+
     TODO: Document the units of x, y, and z.
     """
 
@@ -19,18 +19,26 @@ class Push(Base):
         "description": "Push the cube to a target location on a table",
     }
 
-    def __init__(self, **kwargs):
+    def __init__(self, movement_penalty_coeff: float = 0.15, **kwargs):
+        """
+        Args:
+            movement_penalty_coeff: The reward is calculated as (distance_to_goal + c * movement_velocity_magnitude),
+                where c is this parameter. Defaults to 0.15 to match the original implementation (although this is
+                really meaningless as the action space units are different).
+        """
+        self._movement_penalty_coeff = movement_penalty_coeff
         super().__init__("push", **kwargs)
 
     def is_success(self):
-        return np.linalg.norm(self.obj - self.goal) <= 0.05
+        return np.linalg.norm(self.obj - self.target_loc) <= 0.05
 
     def get_reward(self):
-        dist = np.linalg.norm(self.obj - self.goal)
+        # dist = np.linalg.norm(self.obj - self.goal)
+        dist = np.linalg.norm(self.obj - self.target_loc)
         # Add penalty based on last action magnitude. We don't want there to be a success condition if the block is
         # being pushed through the goal without stopping.
-        penalty = self._act_magnitude**2
-        return -(dist + 0.15 * penalty)
+        print(dist, self._movement_penalty_coeff * self._act_magnitude**2, self._act_magnitude**2)
+        return -(dist + self._movement_penalty_coeff * self._act_magnitude**2)
 
     def _get_obs(self):
         """TODO(now): What should this return?"""
@@ -56,7 +64,7 @@ class Push(Base):
         #     ],
         #     axis=0,
         # )
-    
+
     def get_obs(self):
         if self.obs_type == "state":
             return self._get_obs()
@@ -74,6 +82,8 @@ class Push(Base):
             )
 
     def _sample_goal(self):
+        # TODO(now): This is confusing because the getters in Base change co-ordinate system to be relative to the
+        # center of the table.
         # Gripper
         gripper_pos = np.array([1.280, 0.295, 0.735]) + self.np_random.uniform(-0.05, 0.05, size=3)
         super()._set_gripper(gripper_pos, self.gripper_rotation)
@@ -86,13 +96,10 @@ class Push(Base):
         object_qpos[:3] = object_pos
         self._utils.set_joint_qpos(self.model, self.data, "object_joint0", object_qpos)
         # Goal
-        self.goal = np.array([1.600, 0.200, 0.545])
-        self.goal[:2] += self.np_random.uniform(-0.1, 0.1, size=2)
-        # There is no setter util for the site so we get the site and mutate it in place.
-        pos = self._utils.get_site_xpos(self.model, self.data, "target0")
-        pos -= pos
-        pos += self.goal
-        return self.goal
+        goal = np.array([1.600, 0.200, 0.545])
+        goal[:2] += self.np_random.uniform(-0.1, 0.1, size=2)
+        self.target_loc = goal
+        return self.target_loc
 
     def reset(
         self,

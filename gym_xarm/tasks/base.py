@@ -167,6 +167,17 @@ class Base(gym.Env):
         return self._utils.get_joint_qpos(self.model, self.data, "right_outer_knuckle_joint")
 
     @property
+    def target_loc(self) -> np.ndarray:
+        return self._utils.get_site_xpos(self.model, self.data, "target0") - self.center_of_table
+
+    @target_loc.setter
+    def target_loc(self, value: np.ndarray):
+        # There is no setter util for the site so we get the site and mutate it in place.
+        pos = self._utils.get_site_xpos(self.model, self.data, "target0")
+        pos -= pos
+        pos += value
+
+    @property
     def robot_state(self):
         return np.concatenate([self.eef - self.center_of_table, self.gripper_angle])
 
