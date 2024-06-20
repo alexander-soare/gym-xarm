@@ -37,7 +37,6 @@ class Push(Base):
         dist = np.linalg.norm(self.obj - self.target_loc)
         # Add penalty based on last action magnitude. We don't want there to be a success condition if the block is
         # being pushed through the goal without stopping.
-        print(dist, self._movement_penalty_coeff * self._act_magnitude**2, self._act_magnitude**2)
         return -(dist + self._movement_penalty_coeff * self._act_magnitude**2)
 
     def _get_obs(self):
