@@ -2,9 +2,9 @@ from collections import OrderedDict
 
 from gym_xarm.tasks.base import Base as Base
 from gym_xarm.tasks.lift import Lift
+from gym_xarm.tasks.push import Push
 
 # from gym_xarm.tasks.peg_in_box import PegInBox
-# from gym_xarm.tasks.push import Push
 # from gym_xarm.tasks.reach import Reach
 
 
@@ -19,15 +19,15 @@ TASKS = OrderedDict(
         #         "description": "Reach a target location with the end effector",
         #     },
         # ),
-        # (
-        #     "push",
-        #     {
-        #         "env": Push,
-        #         "action_space": "xyz",
-        #         "episode_length": 50,
-        #         "description": "Push a cube to a target location",
-        #     },
-        # ),
+        (
+            "push",
+            {
+                "env": Push,
+                "action_space": "xyz",
+                "episode_length": 50,
+                "description": "Push a cube to a target location",
+            },
+        ),
         # (
         #     "peg_in_box",
         #     {

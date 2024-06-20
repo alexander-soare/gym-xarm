@@ -1,81 +1,112 @@
-# import numpy as np
+import numpy as np
 
 from gym_xarm.tasks import Base
 
 
 class Push(Base):
-    """DEPRECATED: use only Lift for now"""
+    """Xarm Push environment where the goal is to push the cube to a target location on a table.
+    
+    The action space is the desired relative target for the end-effector (x (forward), y (left), z (up)). The gripper
+    is fixed in place.
+    
+    TODO: Document the units of x, y, and z.
+    """
 
-    ...
-    # def __init__(self):
-    #     super().__init__("push")
+    metadata = {
+        **Base.metadata,
+        "action_space": "xyzw",
+        "episode_length": 50,
+        "description": "Push the cube to a target location on a table",
+    }
 
-    # def _reset_sim(self):
-    #     self._act_magnitude = 0
-    #     super()._reset_sim()
+    def __init__(self, **kwargs):
+        super().__init__("push", **kwargs)
 
-    # def is_success(self):
-    #     return np.linalg.norm(self.obj - self.goal) <= 0.05
+    def is_success(self):
+        return np.linalg.norm(self.obj - self.goal) <= 0.05
 
-    # def get_reward(self):
-    #     dist = np.linalg.norm(self.obj - self.goal)
-    #     penalty = self._act_magnitude**2
-    #     return -(dist + 0.15 * penalty)
+    def get_reward(self):
+        dist = np.linalg.norm(self.obj - self.goal)
+        # Add penalty based on last action magnitude. We don't want there to be a success condition if the block is
+        # being pushed through the goal without stopping.
+        penalty = self._act_magnitude**2
+        return -(dist + 0.15 * penalty)
 
-    # def _get_obs(self):
-    #     eef_velp = self.sim.data.get_site_xvelp("grasp") * self.dt
-    #     gripper_angle = self.sim.data.get_joint_qpos("right_outer_knuckle_joint")
-    #     eef, goal = self.eef - self.center_of_table, self.goal - self.center_of_table
+    def _get_obs(self):
+        """TODO(now): What should this return?"""
+        # return np.concatenate(
+        #     [
+        #         # self.eef,
+        #         # self.eef_velp,
+        #         self.obj,
+        #         self.obj_rot,
+        #         self.obj_velp,
+        #         self.obj_velr,
+        #         self.eef - self.obj,
+        #         np.array(
+        #             [
+        #                 np.linalg.norm(self.eef - self.obj),
+        #                 np.linalg.norm(self.eef[:-1] - self.obj[:-1]),
+        #                 self.z_target,
+        #                 self.z_target - self.obj[-1],
+        #                 self.z_target - self.eef[-1],
+        #             ]
+        #         ),
+        #         self.gripper_angle,
+        #     ],
+        #     axis=0,
+        # )
+    
+    def get_obs(self):
+        if self.obs_type == "state":
+            return self._get_obs()
+        pixels = self._render(renderer=self.observation_renderer)
+        if self.obs_type == "pixels":
+            return pixels
+        elif self.obs_type == "pixels_agent_pos":
+            return {
+                "pixels": pixels,
+                "agent_pos": self.robot_state[:3],
+            }
+        else:
+            raise ValueError(
+                f"Unknown obs_type {self.obs_type}. Must be one of [pixels, state, pixels_agent_pos]"
+            )
 
-    #     obj = self.obj - self.center_of_table
-    #     obj_rot = self.sim.data.get_joint_qpos("object_joint0")[-4:]
-    #     obj_velp = self.sim.data.get_site_xvelp("object_site") * self.dt
-    #     obj_velr = self.sim.data.get_site_xvelr("object_site") * self.dt
+    def _sample_goal(self):
+        # Gripper
+        gripper_pos = np.array([1.280, 0.295, 0.735]) + self.np_random.uniform(-0.05, 0.05, size=3)
+        super()._set_gripper(gripper_pos, self.gripper_rotation)
 
-    #     obs = np.concatenate(
-    #         [
-    #             eef,
-    #             eef_velp,
-    #             goal,
-    #             obj,
-    #             obj_rot,
-    #             obj_velp,
-    #             obj_velr,
-    #             eef - goal,
-    #             eef - obj,
-    #             obj - goal,
-    #             np.array(
-    #                 [
-    #                     np.linalg.norm(eef - goal),
-    #                     np.linalg.norm(eef - obj),
-    #                     np.linalg.norm(obj - goal),
-    #                     gripper_angle,
-    #                 ]
-    #             ),
-    #         ],
-    #         axis=0,
-    #     )
-    #     return {"observation": obs, "state": eef, "achieved_goal": eef, "desired_goal": goal}
+        # Object
+        object_pos = self.center_of_table - np.array([0.25, 0, 0.07])
+        object_pos[0] += self.np_random.uniform(-0.08, 0.08)
+        object_pos[1] += self.np_random.uniform(-0.08, 0.08)
+        object_qpos = self._utils.get_joint_qpos(self.model, self.data, "object_joint0")
+        object_qpos[:3] = object_pos
+        self._utils.set_joint_qpos(self.model, self.data, "object_joint0", object_qpos)
+        # Goal
+        self.goal = np.array([1.600, 0.200, 0.545])
+        self.goal[:2] += self.np_random.uniform(-0.1, 0.1, size=2)
+        # There is no setter util for the site so we get the site and mutate it in place.
+        pos = self._utils.get_site_xpos(self.model, self.data, "target0")
+        pos -= pos
+        pos += self.goal
+        return self.goal
 
-    # def _sample_goal(self):
-    #     # Gripper
-    #     gripper_pos = np.array([1.280, 0.295, 0.735]) + self.np_random.uniform(-0.05, 0.05, size=3)
-    #     super()._set_gripper(gripper_pos, self.gripper_rotation)
+    def reset(
+        self,
+        seed=None,
+        options: dict | None = None,
+    ):
+        self._act_magnitude = 0
+        self._action = np.zeros(4)
+        return super().reset(seed=seed, options=options)
 
-    #     # Object
-    #     object_pos = self.center_of_table - np.array([0.25, 0, 0.07])
-    #     object_pos[0] += self.np_random.uniform(-0.08, 0.08, size=1)
-    #     object_pos[1] += self.np_random.uniform(-0.08, 0.08, size=1)
-    #     object_qpos = self.sim.data.get_joint_qpos("object_joint0")
-    #     object_qpos[:3] = object_pos
-    #     self.sim.data.set_joint_qpos("object_joint0", object_qpos)
-
-    #     # Goal
-    #     self.goal = np.array([1.600, 0.200, 0.545])
-    #     self.goal[:2] += self.np_random.uniform(-0.1, 0.1, size=2)
-    #     self.sim.model.site_pos[self.sim.model.site_name2id("target0")] = self.goal
-    #     return self.goal
-
-    # def step(self, action):
-    #     self._act_magnitude = np.linalg.norm(action[:3])
-    #     return super().step(action)
+    def step(self, action):
+        """Action should by just the xyz delta component. The gripper action is fixed to be 0."""
+        assert action.shape == (3,)
+        action = np.append(action, np.zeros(1, dtype=np.float32))
+        self._act_magnitude = np.linalg.norm(action[:3])
+        self._action = action.copy()
+        return super().step(action)
